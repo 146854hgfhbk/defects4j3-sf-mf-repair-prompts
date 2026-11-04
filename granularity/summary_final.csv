@@ -1,0 +1,10 @@
+class,count,share_of_all,in_scope
+SF,564,66.04%,yes
+MF,263,30.80%,yes
+NAF,27,3.16%,no
+TOTAL,854,100.00%,
+
+SF subtype,count,,
+SL,30,,
+SH,416,,
+SF,118,,
