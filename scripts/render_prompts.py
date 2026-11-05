@@ -8,12 +8,17 @@ Missing pieces are omitted, the bug itself is never skipped:
 """
 import json, os, re, sys
 
-sys.path.insert(0, "/home/yifeipei")
-import d4j_function_granularity as G
-import d4j_prompt_extract4 as X
+try:  # 只在「函数抽取失败」的兜底分支里用到，本地没有这些模块也能跑主路径
+    sys.path.insert(0, "/home/yifeipei")
+    import d4j_function_granularity as G
+    import d4j_prompt_extract4 as X
+except Exception:  # pragma: no cover
+    G = X = None
 
-DATA = "/home/yifeipei/d4j_prompt/d4j_prompt_data.jsonl"
-OUTDIR = "/home/yifeipei/d4j_prompt"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+DATA = os.environ.get("D4J_PROMPT_DATA", os.path.join(ROOT, "data", "d4j_prompt_data.jsonl"))
+OUTDIR = os.environ.get("D4J_PROMPT_OUT", os.path.join(ROOT, "prompts"))
 
 def marked_source(f):
     lines = (f.get("source") or "").split("\n")
@@ -136,8 +141,10 @@ def render(rec, variant="A"):
         if t.get("method_source"):
             if n == 0:
                 p.append("The bug manifests in the following test.")
+            elif n == 1:
+                p.append("The function fails on the following test.")
             else:
-                p.append("The function%s fail%s on the following test." % ("s" if n > 1 else "", "" if n > 1 else "s"))
+                p.append("These functions fail on the following test.")
             p.append("")
             p.append("Test code:")
             p.append("```java")
@@ -162,39 +169,65 @@ def render(rec, variant="A"):
                  "consistent if several functions are involved). Keep it under 200 words.")
         return "\n".join(p), missing
 
-    p.append("Based on all the information above, please provide a correct fix for the bug.")
     if diff_mode:
+        p.append("Based on all the information above, please provide a correct fix for the bug.")
         p.append("Return only the unified diff, inside a single ```diff ... ``` block.")
     elif n <= 1:
-        p.append("Return the complete fixed function inside a single ```java ... ``` block, and nothing else.")
+        p.append("Based on all the information above, please provide a correct fix for the bug."
+                 "Return the complete fixed function inside a single ```java ... ``` block, and nothing else.")
     else:
-        p.append("Return the complete fixed body of EVERY function listed above, in the same order, using exactly this format and no other text:")
+        p.append("Based on all the information above, please provide a correct fix for the bug."
+                 "Return the complete fixed body of EVERY function listed above, in the same order, "
+                 "using exactly this format and no other text:")
         p.append("=== FILE: <file path> ===")
         p.append("=== FUNCTION: <signature> ===")
+        p.append("")
         p.append("```java")
         p.append("<fixed function>")
         p.append("```")
-        p.append("Do not omit, merge, rename or reorder the functions; keep every signature unchanged; do not modify the test.")
+        p.append("Do not omit, merge, rename or reorder the functions; keep every signature unchanged.")
     return "\n".join(p), missing
+
+def _load_old(name):
+    """本地缺少 D4J 元数据时，函数抽取失败的 9 条沿用仓库里已发布的 prompt。"""
+    p = os.path.join(ROOT, "prompts", name)
+    if not os.path.exists(p):
+        return {}
+    return {json.loads(l)["bug"]: json.loads(l)["prompt"] for l in open(p, encoding="utf-8")}
+
 
 def main():
     rows = [json.loads(l) for l in open(DATA, encoding="utf-8")]
+    old_a, old_b = _load_old("prompts_A.jsonl"), _load_old("prompts_B_stage1.jsonl")
+    os.makedirs(OUTDIR, exist_ok=True)
     A, B, partial = [], [], []
     for r in rows:
-        pa, miss = render(r, "A")
-        pb, _ = render(r, "B1")
-        A.append({"bug": r["bug"], "class": r["class"], "n_functions": len([f for f in r["buggy_functions"] if f.get("in_function")]), "missing": miss, "prompt": pa})
-        B.append({"bug": r["bug"], "class": r["class"], "n_functions": len([f for f in r["buggy_functions"] if f.get("in_function")]), "missing": miss, "prompt": pb})
-        if miss:
+        try:
+            pa, miss = render(r, "A")
+        except Exception:
+            pa, miss = old_a.get(r["bug"], ""), ["fallback_old_prompt"]
+        try:
+            pb, _ = render(r, "B1")
+        except Exception:
+            pb = old_b.get(r["bug"], "")
+        if miss:  # 关键信息不全的 bug 不入册（保持 816 条的既有口径）
             partial.append((r["bug"], ",".join(miss)))
+            continue
+        n = len([f for f in r["buggy_functions"] if f.get("in_function")])
+        A.append({"bug": r["bug"], "class": r["class"], "n_functions": n, "missing": miss, "prompt": pa})
+        B.append({"bug": r["bug"], "class": r["class"], "n_functions": n, "missing": miss, "prompt": pb})
+
     for name, data in (("prompts_A.jsonl", A), ("prompts_B_stage1.jsonl", B)):
         with open(os.path.join(OUTDIR, name), "w", encoding="utf-8") as f:
             for x in data:
                 f.write(json.dumps(x, ensure_ascii=False) + "\n")
-    with open(os.path.join(OUTDIR, "prompts_partial.txt"), "w", encoding="utf-8") as f:
+    with open(os.path.join(OUTDIR, "d4j_prompts.jsonl"), "w", encoding="utf-8") as f:
+        for x in A:
+            f.write(json.dumps({"bug": x["bug"], "class": x["class"], "prompt": x["prompt"]}, ensure_ascii=False) + "\n")
+    with open(os.path.join(OUTDIR, "prompts_skipped.txt"), "w", encoding="utf-8") as f:
         for bug, miss in partial:
-            f.write("%s\t%s\n" % (bug, miss))
-    print("wrote", len(A), "prompts; partial:", len(partial))
+            f.write("%s\n" % bug)
+    print("wrote", len(A), "prompts; skipped:", len(partial))
 
 if __name__ == "__main__":
     main()

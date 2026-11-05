@@ -2,6 +2,8 @@
 
 ## Lang-21（SF，1 个函数）
 
+`n_functions = 1`
+
 ```text
 You are a helpful assistant that fixes Java code.
 The following Java function contains a bug.
@@ -64,11 +66,12 @@ at junit.framework.Assert.assertTrue(Assert.java:22)
 at junit.framework.Assert.assertFalse(Assert.java:39)
 ```
 
-Based on all the information above, please provide a correct fix for the bug.
-Return the complete fixed function inside a single ```java ... ``` block, and nothing else.
+Based on all the information above, please provide a correct fix for the bug.Return the complete fixed function inside a single ```java ... ``` block, and nothing else.
 ```
 
-## Chart-2（MF，2 个函数）
+## Chart-2（MF，多个函数（含 omission 标记））
+
+`n_functions = 2`
 
 ```text
 You are a helpful assistant that fixes Java code.
@@ -193,7 +196,7 @@ The following 2 Java functions together contain a bug: a single defect whose fix
 
 The buggy line(s) are marked with "// BUGGY LINE". The defect can only be eliminated by coordinated changes in more than one of the functions above.
 
-The functions fail on the following test.
+These functions fail on the following test.
 
 Test code:
 ```java
@@ -229,13 +232,13 @@ at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
 at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
 ```
 
-Based on all the information above, please provide a correct fix for the bug.
-Return the complete fixed body of EVERY function listed above, in the same order, using exactly this format and no other text:
+Based on all the information above, please provide a correct fix for the bug.Return the complete fixed body of EVERY function listed above, in the same order, using exactly this format and no other text:
 === FILE: <file path> ===
 === FUNCTION: <signature> ===
+
 ```java
 <fixed function>
 ```
-Do not omit, merge, rename or reorder the functions; keep every signature unchanged; do not modify the test.
+Do not omit, merge, rename or reorder the functions; keep every signature unchanged.
 ```
 
